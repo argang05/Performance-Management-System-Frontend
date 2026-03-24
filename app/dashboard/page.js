@@ -214,20 +214,6 @@ export default function DashboardPage() {
     [peerQueue]
   );
 
-  // console.log("statusData =", statusData);
-  // console.log("peer_reviewer =", statusData?.peer_reviewer);
-
-  // const canRecommendPeer =
-  //   showStatusTracker &&
-  //   !!statusData?.questionnaire_id &&
-  //   !statusData?.peer_reviewer &&
-  //   statusData?.status !== "completed";
-
-  // const canRecommendPeer =
-  // showStatusTracker &&
-  // !!statusData?.questionnaire_id &&
-  // !statusData?.peer_reviewer;
-
   return (
     <main className="min-h-screen bg-[#F3F4F6]">
       <AppHeader />

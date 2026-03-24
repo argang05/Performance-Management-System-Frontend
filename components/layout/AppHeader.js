@@ -6,6 +6,8 @@ import { useAuth } from "@/app/context/AuthContext";
 export default function AppHeader() {
   const { user, logout } = useAuth();
 
+  const isAdminScoringUser = String(user?.employee_number || "") === "100607";
+
   return (
     <header className="w-full bg-[#0B0B0B] text-white shadow-md">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
@@ -25,6 +27,12 @@ export default function AppHeader() {
           <Link href="/questionnaire" className="transition hover:text-[#F6490D]">
             Questionnaire
           </Link>
+
+          {isAdminScoringUser && (
+            <Link href="/admin-scoring" className="transition hover:text-[#F6490D]">
+              Scoring Console
+            </Link>
+          )}
 
           <button
             onClick={logout}
