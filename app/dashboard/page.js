@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import AppHeader from "@/components/layout/AppHeader";
 import { useAuth } from "@/app/context/AuthContext";
 import ReviewStatusTracker from "@/components/ReviewStatusTracker";
 import { useRouter } from "next/navigation";
-import SubordinateResponsesModal from "@/components/SubordinateResponsesModal";
+import { toast } from "sonner";
+import PeerRecommendConfirmModal from "@/components/PeerRecommendConfirmModal";
 
 export default function DashboardPage() {
   const { user, accessToken } = useAuth();
@@ -14,14 +15,27 @@ export default function DashboardPage() {
 
   const [statusData, setStatusData] = useState(null);
   const [rmQueue, setRmQueue] = useState([]);
+  const [skipQueue, setSkipQueue] = useState([]);
+  const [peerQueue, setPeerQueue] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const [peerQuery, setPeerQuery] = useState("");
+  const [peerResults, setPeerResults] = useState([]);
+  const [selectedPeer, setSelectedPeer] = useState(null);
+  const [searchingPeers, setSearchingPeers] = useState(false);
+  const [recommendingPeer, setRecommendingPeer] = useState(false);
+  const [confirmPeerOpen, setConfirmPeerOpen] = useState(false);
+  const [allEligiblePeers, setAllEligiblePeers] = useState([]);
+  const [filteredPeers, setFilteredPeers] = useState([]);
+
+  const [peerTab, setPeerTab] = useState("pending");
 
   useEffect(() => {
     async function loadDashboardData() {
       try {
         setLoading(true);
 
-        const [statusRes, rmQueueRes] = await Promise.all([
+        const [statusRes, rmQueueRes, skipQueueRes, peerQueueRes] = await Promise.all([
           fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/evaluations/self-review-status/`, {
             method: "GET",
             headers: {
@@ -38,10 +52,26 @@ export default function DashboardPage() {
             },
             cache: "no-store",
           }),
+          fetch(`/api/evaluations/skip/pending-reviews/`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+            cache: "no-store",
+          }),
+          fetch(`/api/evaluations/peer/pending-reviews/`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+            cache: "no-store",
+          }),
         ]);
 
         const statusJson = await statusRes.json();
         const rmQueueJson = await rmQueueRes.json();
+        const skipQueueJson = await skipQueueRes.json();
+        const peerQueueJson = await peerQueueRes.json();
 
         if (statusRes.ok) {
           setStatusData(statusJson);
@@ -51,13 +81,33 @@ export default function DashboardPage() {
 
         if (rmQueueRes.ok && Array.isArray(rmQueueJson)) {
           setRmQueue(rmQueueJson);
+        } else if (rmQueueRes.ok && Array.isArray(rmQueueJson?.results)) {
+          setRmQueue(rmQueueJson.results);
         } else {
           setRmQueue([]);
+        }
+
+        if (skipQueueRes.ok && Array.isArray(skipQueueJson?.results)) {
+          setSkipQueue(skipQueueJson.results);
+        } else if (skipQueueRes.ok && Array.isArray(skipQueueJson)) {
+          setSkipQueue(skipQueueJson);
+        } else {
+          setSkipQueue([]);
+        }
+
+        if (peerQueueRes.ok && Array.isArray(peerQueueJson?.results)) {
+          setPeerQueue(peerQueueJson.results);
+        } else if (peerQueueRes.ok && Array.isArray(peerQueueJson)) {
+          setPeerQueue(peerQueueJson);
+        } else {
+          setPeerQueue([]);
         }
       } catch (error) {
         console.error("Dashboard load error:", error);
         setStatusData({ exists: false });
         setRmQueue([]);
+        setSkipQueue([]);
+        setPeerQueue([]);
       } finally {
         setLoading(false);
       }
@@ -68,11 +118,141 @@ export default function DashboardPage() {
     }
   }, [accessToken]);
 
+  async function loadEligiblePeers() {
+    try {
+      const res = await fetch(`/api/evaluations/peer/search?q=`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+  
+      const data = await res.json();
+  
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to load peers.");
+      }
+  
+      const peers = Array.isArray(data) ? data : [];
+      setAllEligiblePeers(peers);
+      setFilteredPeers(peers);
+    } catch (error) {
+      console.error(error);
+      toast.error(error.message || "Failed to load eligible peers.");
+      setAllEligiblePeers([]);
+      setFilteredPeers([]);
+    }
+  }
+
+  useEffect(() => {
+    if (accessToken) {
+      loadEligiblePeers();
+    }
+  }, [accessToken]);
+
+  function searchPeers(value) {
+    setPeerQuery(value);
+  
+    if (!value.trim()) {
+      setFilteredPeers(allEligiblePeers);
+      return;
+    }
+  
+    const q = value.toLowerCase();
+  
+    const filtered = allEligiblePeers.filter((peer) => {
+      return (
+        String(peer.full_name || "").toLowerCase().includes(q) ||
+        String(peer.employee_number || "").toLowerCase().includes(q)
+      );
+    });
+  
+    setFilteredPeers(filtered);
+  }
+
+  async function recommendPeer() {
+    if (!selectedPeer || !statusData?.questionnaire_id) return;
+
+    try {
+      setRecommendingPeer(true);
+
+      const res = await fetch("/api/evaluations/peer/recommend", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          questionnaire_id: statusData.questionnaire_id,
+          peer_employee_id: selectedPeer.id,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to recommend peer.");
+      }
+
+      toast.success("Peer review request sent successfully.");
+      setConfirmPeerOpen(false);
+
+      setStatusData((prev) => ({
+        ...prev,
+        status: "under_peer_review",
+        peer_reviewer: selectedPeer.full_name,
+      }));
+
+      setPeerQuery("");
+      setPeerResults([]);
+      setSelectedPeer(null);
+
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      toast.error(error.message || "Failed to recommend peer.");
+    } finally {
+      setRecommendingPeer(false);
+    }
+  }
+
   const showQuestionnaireCard =
     !statusData?.exists || statusData?.status === "draft";
 
   const showStatusTracker =
     statusData?.exists && statusData?.status && statusData?.status !== "draft";
+
+  const hasActualPeerReviewer =
+    !!statusData?.peer_reviewer &&
+    String(statusData.peer_reviewer).trim().toLowerCase() !== "not recommended yet";
+  
+  const canRecommendPeer =
+    showStatusTracker &&
+    !!statusData?.questionnaire_id &&
+    !hasActualPeerReviewer;
+
+  const pendingPeerReviews = useMemo(
+    () => peerQueue.filter((item) => !item.peer_completed),
+    [peerQueue]
+  );
+
+  const completedPeerReviews = useMemo(
+    () => peerQueue.filter((item) => item.peer_completed),
+    [peerQueue]
+  );
+
+  console.log("statusData =", statusData);
+  console.log("peer_reviewer =", statusData?.peer_reviewer);
+
+  // const canRecommendPeer =
+  //   showStatusTracker &&
+  //   !!statusData?.questionnaire_id &&
+  //   !statusData?.peer_reviewer &&
+  //   statusData?.status !== "completed";
+
+  // const canRecommendPeer =
+  // showStatusTracker &&
+  // !!statusData?.questionnaire_id &&
+  // !statusData?.peer_reviewer;
 
   return (
     <main className="min-h-screen bg-[#F3F4F6]">
@@ -166,7 +346,7 @@ export default function DashboardPage() {
                       Peer Reviewer
                     </p>
                     <p className="mt-1 text-sm font-semibold text-[#111827]">
-                      {statusData?.peer_reviewer || "Not recommended yet"}
+                    {hasActualPeerReviewer ? statusData.peer_reviewer : "Not recommended yet"}
                     </p>
                   </div>
                 </div>
@@ -177,41 +357,249 @@ export default function DashboardPage() {
                   <h3 className="text-sm font-semibold text-[#111827]">
                     Peer Recommendation
                   </h3>
-                  <p className="mt-1 text-sm text-gray-600">
-                    Peer recommendation will be enabled here. Only one peer can be recommended.
-                  </p>
 
-                  <div className="mt-4 flex flex-wrap gap-3">
+                  {!statusData?.peer_reviewer ? (
+                    <p className="mt-1 text-sm text-gray-600">
+                      Select one peer from the same band for peer questionnaire review.
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-sm text-gray-600">
+                      {statusData?.status === "under_peer_review"
+                        ? "Awaiting review from peer."
+                        : "Peer review request has been processed."}
+                    </p>
+                  )}
+
+                  {canRecommendPeer ? (
+                    <div className="mt-4 space-y-3">
                     <input
                       type="text"
-                      disabled
+                      value={peerQuery}
+                      hidden
+                      onChange={(e) => searchPeers(e.target.value)}
                       placeholder="Search employee name or employee number"
-                      className="min-w-[280px] flex-1 rounded-xl border border-gray-300 bg-gray-100 px-4 py-2.5 text-sm text-gray-500 outline-none"
+                      className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-[#111827] outline-none transition focus:border-[#F6490D]/25 focus:ring-4 focus:ring-[#F6490D]/8"
                     />
-
-                    <button
-                      disabled
-                      className="rounded-xl bg-gray-300 px-4 py-2.5 text-sm font-medium text-white"
+                  
+                    <select
+                      value={selectedPeer?.id || ""}
+                      onChange={(e) => {
+                        const peer = filteredPeers.find(
+                          (item) => String(item.id) === String(e.target.value)
+                        );
+                        setSelectedPeer(peer || null);
+                      }}
+                      className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-[#111827] outline-none transition focus:border-[#F6490D]/25 focus:ring-4 focus:ring-[#F6490D]/8"
                     >
-                      Recommend Peer
-                    </button>
+                      <option value="">Select an eligible peer</option>
+                      {filteredPeers.map((peer) => (
+                        <option key={peer.id} value={peer.id}>
+                          {peer.full_name} ({peer.employee_number}){peer.department ? ` • ${peer.department}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        disabled={!selectedPeer}
+                        onClick={() => setConfirmPeerOpen(true)}
+                        className="rounded-xl bg-[#F6490D] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Recommend Peer
+                      </button>
+                  
+                      {selectedPeer && (
+                        <div className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-[#111827] shadow-sm">
+                          Selected: {selectedPeer.full_name} ({selectedPeer.employee_number})
+                        </div>
+                      )}
+                    </div>
                   </div>
+                  ) : (
+                    // <div className="mt-4 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm">
+                    //   {statusData?.peer_reviewer
+                    //     ? "Awaiting Peer Review Completion"
+                    //     : "Peer recommendation is currently unavailable."}
+                    // </div>
+                    <div className="mt-4 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm">
+                      {hasActualPeerReviewer
+                          ? statusData?.status === "under_peer_review"
+                            ? "Awaiting Peer Review Completion"
+                            : "Peer review request has been processed."
+                          : "No peer reviewer has been recommended yet."
+                      }
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
             {rmQueue.length > 0 && (
-            <div className="mt-10">
-              <h2 className="mb-4 text-xl font-semibold tracking-tight text-[#111827]">
-                Team Review Status
-              </h2>
+              <div className="mt-10">
+                <h2 className="mb-4 text-xl font-semibold tracking-tight text-[#111827]">
+                  Team Review (Direct Subordinate) Status
+                </h2>
 
-              <div className="grid gap-5 md:grid-cols-2">
-                {rmQueue.map((item) => {
-                  const canReview =
-                    item.status === "self_submitted" || item.status === "under_rm_review";
+                <div className="grid gap-5 md:grid-cols-2">
+                  {rmQueue.map((item) => {
+                    const canReview =
+                      item.status === "self_submitted" ||
+                      item.status === "under_rm_review";
 
-                  return (
+                    return (
+                      <div
+                        key={item.questionnaire_id}
+                        className="rounded-2xl bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                      >
+                        <div className="mb-3 flex items-start justify-between gap-4">
+                          <div>
+                            <h3 className="text-lg font-semibold text-[#111827]">
+                              {item.employee_name}
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                              Employee No: {item.employee_number}
+                            </p>
+                          </div>
+
+                          <span className="rounded-full bg-[#FFF1EC] px-3 py-1 text-xs font-medium text-[#F6490D]">
+                            {item.status === "draft"
+                              ? "NOT SUBMITTED YET"
+                              : String(item.status || "").replaceAll("_", " ").toUpperCase()}
+                          </span>
+                        </div>
+
+                        <div className="mb-4 space-y-1 text-sm text-gray-600">
+                          <p>Department: {item.department}</p>
+                          <p>Cycle: {item.cycle}</p>
+                          <p>
+                            Submitted At:{" "}
+                            {item.submitted_at
+                              ? new Date(item.submitted_at).toLocaleString()
+                              : "—"}
+                          </p>
+                        </div>
+
+                        <div className="mb-4">
+                          <ReviewStatusTracker
+                            status={item.status || "self_submitted"}
+                            compact
+                          />
+                        </div>
+
+                        {canReview && (
+                          <button
+                            onClick={() => router.push(`/rm-review/${item.questionnaire_id}`)}
+                            className="rounded-xl bg-[#F6490D] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:shadow-md"
+                          >
+                            Review Questionnaire
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {skipQueue.length > 0 && (
+              <div className="mt-10">
+                <h2 className="mb-4 text-xl font-semibold tracking-tight text-[#111827]">
+                  Pending Skip-Level Reviews
+                </h2>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  {skipQueue.map((item) => {
+                    const canReview = item.status === "under_skip_review";
+
+                    return (
+                      <div
+                        key={item.questionnaire_id}
+                        className="rounded-2xl bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                      >
+                        <div className="mb-3 flex items-start justify-between gap-4">
+                          <div>
+                            <h3 className="text-lg font-semibold text-[#111827]">
+                              {item.employee_name}
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                              Employee No: {item.employee_number}
+                            </p>
+                          </div>
+
+                          <span className="rounded-full bg-[#FFF1EC] px-3 py-1 text-xs font-medium text-[#F6490D]">
+                            {String(item.status || "").replaceAll("_", " ").toUpperCase()}
+                          </span>
+                        </div>
+
+                        <div className="mb-4 space-y-1 text-sm text-gray-600">
+                          <p>Department: {item.department}</p>
+                          <p>
+                            Submitted At:{" "}
+                            {item.submitted_at
+                              ? new Date(item.submitted_at).toLocaleString()
+                              : "—"}
+                          </p>
+                        </div>
+
+                        <div className="mb-4">
+                          <ReviewStatusTracker
+                            status={item.status || "under_skip_review"}
+                            compact
+                          />
+                        </div>
+
+                        {canReview && (
+                          <button
+                            onClick={() => router.push(`/skip-review/${item.questionnaire_id}`)}
+                            className="rounded-xl bg-[#F6490D] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:shadow-md"
+                          >
+                            Review Questionnaire
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {peerQueue.length > 0 && (
+              <div className="mt-10">
+                <div className="mb-4 flex items-center justify-between gap-4">
+                  <h2 className="text-xl font-semibold tracking-tight text-[#111827]">
+                    Peer Review Requests
+                  </h2>
+
+                  <div className="flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setPeerTab("pending")}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                        peerTab === "pending"
+                          ? "bg-[#F6490D] text-white"
+                          : "text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      Pending Reviews
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPeerTab("completed")}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                        peerTab === "completed"
+                          ? "bg-[#F6490D] text-white"
+                          : "text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      Completed Reviews
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  {(peerTab === "pending" ? pendingPeerReviews : completedPeerReviews).map((item) => (
                     <div
                       key={item.questionnaire_id}
                       className="rounded-2xl bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
@@ -227,7 +615,7 @@ export default function DashboardPage() {
                         </div>
 
                         <span className="rounded-full bg-[#FFF1EC] px-3 py-1 text-xs font-medium text-[#F6490D]">
-                          {item.status == "draft" ? "Not Submitted Yet".toUpperCase() : String(item.status || "").replaceAll("_", " ").toUpperCase()}
+                          {item.peer_completed ? "COMPLETED" : "PENDING"}
                         </span>
                       </div>
 
@@ -242,27 +630,42 @@ export default function DashboardPage() {
                         </p>
                       </div>
 
-                      <div className="mb-4">
-                        <ReviewStatusTracker status={item.status || "self_submitted"} compact />
-                      </div>
-
-                      {canReview && (
+                      {!item.peer_completed && (
                         <button
-                          onClick={() => router.push(`/rm-review/${item.questionnaire_id}`)}
+                          onClick={() => router.push(`/peer-review/${item.questionnaire_id}`)}
                           className="rounded-xl bg-[#F6490D] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:shadow-md"
                         >
-                          Review Questionnaire
+                          Review Peer Questionnaire
                         </button>
                       )}
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+
+                {peerTab === "pending" && pendingPeerReviews.length === 0 && (
+                  <div className="rounded-2xl bg-white p-6 shadow-sm">
+                    <p className="text-sm text-gray-600">No pending peer reviews.</p>
+                  </div>
+                )}
+
+                {peerTab === "completed" && completedPeerReviews.length === 0 && (
+                  <div className="rounded-2xl bg-white p-6 shadow-sm">
+                    <p className="text-sm text-gray-600">No completed peer reviews.</p>
+                  </div>
+                )}
               </div>
-            </div>
             )}
           </>
         )}
       </section>
+
+      <PeerRecommendConfirmModal
+        open={confirmPeerOpen}
+        peer={selectedPeer}
+        loading={recommendingPeer}
+        onCancel={() => setConfirmPeerOpen(false)}
+        onConfirm={recommendPeer}
+      />
     </main>
   );
 }
