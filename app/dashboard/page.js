@@ -18,16 +18,11 @@ export default function DashboardPage() {
   const [skipQueue, setSkipQueue] = useState([]);
   const [peerQueue, setPeerQueue] = useState([]);
   const [loading, setLoading] = useState(true);
-
   const [peerQuery, setPeerQuery] = useState("");
   const [peerResults, setPeerResults] = useState([]);
   const [selectedPeer, setSelectedPeer] = useState(null);
-  const [searchingPeers, setSearchingPeers] = useState(false);
   const [recommendingPeer, setRecommendingPeer] = useState(false);
   const [confirmPeerOpen, setConfirmPeerOpen] = useState(false);
-  const [allEligiblePeers, setAllEligiblePeers] = useState([]);
-  const [filteredPeers, setFilteredPeers] = useState([]);
-
   const [peerTab, setPeerTab] = useState("pending");
 
   useEffect(() => {
@@ -118,9 +113,17 @@ export default function DashboardPage() {
     }
   }, [accessToken]);
 
-  async function loadEligiblePeers() {
+  async function searchPeers(value) {
+    setPeerQuery(value);
+    setSelectedPeer(null);
+  
+    if (value.trim().length < 2) {
+      setPeerResults([]);
+      return;
+    }
+  
     try {
-      const res = await fetch(`/api/evaluations/peer/search?q=`, {
+      const res = await fetch(`/api/evaluations/peer/search?q=${encodeURIComponent(value)}`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -129,44 +132,15 @@ export default function DashboardPage() {
       const data = await res.json();
   
       if (!res.ok) {
-        throw new Error(data?.error || "Failed to load peers.");
+        throw new Error(data?.error || "Failed to search employees.");
       }
   
-      const peers = Array.isArray(data) ? data : [];
-      setAllEligiblePeers(peers);
-      setFilteredPeers(peers);
+      setPeerResults(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
-      toast.error(error.message || "Failed to load eligible peers.");
-      setAllEligiblePeers([]);
-      setFilteredPeers([]);
+      toast.error(error.message || "Failed to search employees.");
+      setPeerResults([]);
     }
-  }
-
-  useEffect(() => {
-    if (accessToken) {
-      loadEligiblePeers();
-    }
-  }, [accessToken]);
-
-  function searchPeers(value) {
-    setPeerQuery(value);
-  
-    if (!value.trim()) {
-      setFilteredPeers(allEligiblePeers);
-      return;
-    }
-  
-    const q = value.toLowerCase();
-  
-    const filtered = allEligiblePeers.filter((peer) => {
-      return (
-        String(peer.full_name || "").toLowerCase().includes(q) ||
-        String(peer.employee_number || "").toLowerCase().includes(q)
-      );
-    });
-  
-    setFilteredPeers(filtered);
   }
 
   async function recommendPeer() {
@@ -240,8 +214,8 @@ export default function DashboardPage() {
     [peerQueue]
   );
 
-  console.log("statusData =", statusData);
-  console.log("peer_reviewer =", statusData?.peer_reviewer);
+  // console.log("statusData =", statusData);
+  // console.log("peer_reviewer =", statusData?.peer_reviewer);
 
   // const canRecommendPeer =
   //   showStatusTracker &&
@@ -358,64 +332,74 @@ export default function DashboardPage() {
                     Peer Recommendation
                   </h3>
 
-                  {!statusData?.peer_reviewer ? (
-                    <p className="mt-1 text-sm text-gray-600">
-                      Select one peer from the same band for peer questionnaire review.
-                    </p>
-                  ) : (
-                    <p className="mt-1 text-sm text-gray-600">
-                      {statusData?.status === "under_peer_review"
-                        ? "Awaiting review from peer."
-                        : "Peer review request has been processed."}
-                    </p>
-                  )}
+                  {!hasActualPeerReviewer ? (
+                      <p className="mt-1 text-sm text-gray-600">
+                        Search and select any employee for peer questionnaire review.
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-sm text-gray-600">
+                        {statusData?.status === "under_peer_review"
+                          ? "Awaiting review from peer."
+                          : "Peer review request has been processed."}
+                      </p>
+                    )}
 
                   {canRecommendPeer ? (
                     <div className="mt-4 space-y-3">
-                    <input
-                      type="text"
-                      value={peerQuery}
-                      hidden
-                      onChange={(e) => searchPeers(e.target.value)}
-                      placeholder="Search employee name or employee number"
-                      className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-[#111827] outline-none transition focus:border-[#F6490D]/25 focus:ring-4 focus:ring-[#F6490D]/8"
-                    />
-                  
-                    <select
-                      value={selectedPeer?.id || ""}
-                      onChange={(e) => {
-                        const peer = filteredPeers.find(
-                          (item) => String(item.id) === String(e.target.value)
-                        );
-                        setSelectedPeer(peer || null);
-                      }}
-                      className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-[#111827] outline-none transition focus:border-[#F6490D]/25 focus:ring-4 focus:ring-[#F6490D]/8"
-                    >
-                      <option value="">Select an eligible peer</option>
-                      {filteredPeers.map((peer) => (
-                        <option key={peer.id} value={peer.id}>
-                          {peer.full_name} ({peer.employee_number}){peer.department ? ` • ${peer.department}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  
-                    <div className="flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        disabled={!selectedPeer}
-                        onClick={() => setConfirmPeerOpen(true)}
-                        className="rounded-xl bg-[#F6490D] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Recommend Peer
-                      </button>
-                  
-                      {selectedPeer && (
-                        <div className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-[#111827] shadow-sm">
-                          Selected: {selectedPeer.full_name} ({selectedPeer.employee_number})
-                        </div>
-                      )}
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={peerQuery}
+                          onChange={(e) => searchPeers(e.target.value)}
+                          placeholder="Search employee name or employee number"
+                          className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-[#111827] outline-none transition focus:border-[#F6490D]/25 focus:ring-4 focus:ring-[#F6490D]/8"
+                        />
+
+                        {peerResults.length > 0 && !selectedPeer && (
+                          <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                            {peerResults.map((peer) => (
+                              <button
+                                key={peer.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedPeer(peer);
+                                  setPeerQuery(`${peer.full_name} (${peer.employee_number})`);
+                                  setPeerResults([]);
+                                }}
+                                className="flex w-full items-center justify-between border-b border-gray-100 px-4 py-3 text-left transition hover:bg-gray-50 last:border-b-0"
+                              >
+                                <div>
+                                  <p className="text-sm font-medium text-[#111827]">
+                                    {peer.full_name}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    {peer.employee_number}
+                                    {peer.department ? ` • ${peer.department}` : ""}
+                                  </p>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          disabled={!selectedPeer}
+                          onClick={() => setConfirmPeerOpen(true)}
+                          className="rounded-xl bg-[#F6490D] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Recommend Peer
+                        </button>
+
+                        {selectedPeer && (
+                          <div className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-[#111827] shadow-sm">
+                            Selected: {selectedPeer.full_name} ({selectedPeer.employee_number})
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
                   ) : (
                     // <div className="mt-4 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm">
                     //   {statusData?.peer_reviewer
