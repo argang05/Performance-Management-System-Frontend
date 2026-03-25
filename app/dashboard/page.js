@@ -17,6 +17,9 @@ export default function DashboardPage() {
   const [rmQueue, setRmQueue] = useState([]);
   const [skipQueue, setSkipQueue] = useState([]);
   const [peerQueue, setPeerQueue] = useState([]);
+  const [rmPotentialQueue, setRmPotentialQueue] = useState([]);
+  const [skipPotentialQueue, setSkipPotentialQueue] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [peerQuery, setPeerQuery] = useState("");
   const [peerResults, setPeerResults] = useState([]);
@@ -30,7 +33,14 @@ export default function DashboardPage() {
       try {
         setLoading(true);
 
-        const [statusRes, rmQueueRes, skipQueueRes, peerQueueRes] = await Promise.all([
+        const [
+          statusRes,
+          rmQueueRes,
+          skipQueueRes,
+          peerQueueRes,
+          rmPotentialRes,
+          skipPotentialRes,
+        ] = await Promise.all([
           fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/evaluations/self-review-status/`, {
             method: "GET",
             headers: {
@@ -61,12 +71,28 @@ export default function DashboardPage() {
             },
             cache: "no-store",
           }),
+          fetch(`/api/scoring/potential/rm/pending/`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+            cache: "no-store",
+          }),
+          fetch(`/api/scoring/potential/skip/pending/`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+            cache: "no-store",
+          }),
         ]);
 
         const statusJson = await statusRes.json();
         const rmQueueJson = await rmQueueRes.json();
         const skipQueueJson = await skipQueueRes.json();
         const peerQueueJson = await peerQueueRes.json();
+        const rmPotentialJson = await rmPotentialRes.json();
+        const skipPotentialJson = await skipPotentialRes.json();
 
         if (statusRes.ok) {
           setStatusData(statusJson);
@@ -97,12 +123,26 @@ export default function DashboardPage() {
         } else {
           setPeerQueue([]);
         }
+
+        if (rmPotentialRes.ok && Array.isArray(rmPotentialJson?.results)) {
+          setRmPotentialQueue(rmPotentialJson.results);
+        } else {
+          setRmPotentialQueue([]);
+        }
+
+        if (skipPotentialRes.ok && Array.isArray(skipPotentialJson?.results)) {
+          setSkipPotentialQueue(skipPotentialJson.results);
+        } else {
+          setSkipPotentialQueue([]);
+        }
       } catch (error) {
         console.error("Dashboard load error:", error);
         setStatusData({ exists: false });
         setRmQueue([]);
         setSkipQueue([]);
         setPeerQueue([]);
+        setRmPotentialQueue([]);
+        setSkipPotentialQueue([]);
       } finally {
         setLoading(false);
       }
@@ -116,25 +156,25 @@ export default function DashboardPage() {
   async function searchPeers(value) {
     setPeerQuery(value);
     setSelectedPeer(null);
-  
+
     if (value.trim().length < 2) {
       setPeerResults([]);
       return;
     }
-  
+
     try {
       const res = await fetch(`/api/evaluations/peer/search?q=${encodeURIComponent(value)}`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
-  
+
       const data = await res.json();
-  
+
       if (!res.ok) {
         throw new Error(data?.error || "Failed to search employees.");
       }
-  
+
       setPeerResults(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
@@ -198,7 +238,7 @@ export default function DashboardPage() {
   const hasActualPeerReviewer =
     !!statusData?.peer_reviewer &&
     String(statusData.peer_reviewer).trim().toLowerCase() !== "not recommended yet";
-  
+
   const canRecommendPeer =
     showStatusTracker &&
     !!statusData?.questionnaire_id &&
@@ -306,7 +346,7 @@ export default function DashboardPage() {
                       Peer Reviewer
                     </p>
                     <p className="mt-1 text-sm font-semibold text-[#111827]">
-                    {hasActualPeerReviewer ? statusData.peer_reviewer : "Not recommended yet"}
+                      {hasActualPeerReviewer ? statusData.peer_reviewer : "Not recommended yet"}
                     </p>
                   </div>
                 </div>
@@ -319,16 +359,16 @@ export default function DashboardPage() {
                   </h3>
 
                   {!hasActualPeerReviewer ? (
-                      <p className="mt-1 text-sm text-gray-600">
-                        Search and select any employee for peer questionnaire review.
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-sm text-gray-600">
-                        {statusData?.status === "under_peer_review"
-                          ? "Awaiting review from peer."
-                          : "Peer review request has been processed."}
-                      </p>
-                    )}
+                    <p className="mt-1 text-sm text-gray-600">
+                      Search and select any employee for peer questionnaire review.
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-sm text-gray-600">
+                      {statusData?.status === "under_peer_review"
+                        ? "Awaiting review from peer."
+                        : "Peer review request has been processed."}
+                    </p>
+                  )}
 
                   {canRecommendPeer ? (
                     <div className="mt-4 space-y-3">
@@ -387,18 +427,12 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   ) : (
-                    // <div className="mt-4 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm">
-                    //   {statusData?.peer_reviewer
-                    //     ? "Awaiting Peer Review Completion"
-                    //     : "Peer recommendation is currently unavailable."}
-                    // </div>
                     <div className="mt-4 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm">
                       {hasActualPeerReviewer
-                          ? statusData?.status === "under_peer_review"
-                            ? "Awaiting Peer Review Completion"
-                            : "Peer review request has been processed."
-                          : "No peer reviewer has been recommended yet."
-                      }
+                        ? statusData?.status === "under_peer_review"
+                          ? "Awaiting Peer Review Completion"
+                          : "Peer review request has been processed."
+                        : "No peer reviewer has been recommended yet."}
                     </div>
                   )}
                 </div>
@@ -472,6 +506,54 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {rmPotentialQueue.length > 0 && (
+              <div className="mt-10">
+                <h2 className="mb-4 text-xl font-semibold tracking-tight text-[#111827]">
+                  RM Potential Questionnaires
+                </h2>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  {rmPotentialQueue.map((item) => (
+                    <div
+                      key={item.assessment_id}
+                      className="rounded-2xl bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                    >
+                      <div className="mb-3 flex items-start justify-between gap-4">
+                        <div>
+                          <h3 className="text-lg font-semibold text-[#111827]">
+                            {item.employee_name}
+                          </h3>
+                          <p className="text-sm text-gray-500">
+                            Employee No: {item.employee_number}
+                          </p>
+                        </div>
+
+                        <span className="rounded-full bg-[#FFF1EC] px-3 py-1 text-xs font-medium text-[#F6490D]">
+                          {String(item.status || "").replaceAll("_", " ").toUpperCase()}
+                        </span>
+                      </div>
+
+                      <div className="mb-4 space-y-1 text-sm text-gray-600">
+                        <p>Department: {item.department}</p>
+                        <p>Cycle: {item.cycle}</p>
+                        <p>RM Submitted: {item.rm_submitted ? "Yes" : "No"}</p>
+                        <p>Skip Submitted: {item.skip_submitted ? "Yes" : "No"}</p>
+                      </div>
+
+                      {!item.rm_submitted && (
+                        <button
+                          onClick={() => router.push(`/potential/rm/${item.assessment_id}`)}
+                          className="rounded-xl bg-[#F6490D] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:shadow-md"
+                        >
+                          Fill Potential Questionnaire
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {skipQueue.length > 0 && (
               <div className="mt-10">
                 <h2 className="mb-4 text-xl font-semibold tracking-tight text-[#111827]">
@@ -530,6 +612,54 @@ export default function DashboardPage() {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {skipPotentialQueue.length > 0 && (
+              <div className="mt-10">
+                <h2 className="mb-4 text-xl font-semibold tracking-tight text-[#111827]">
+                  Skip-Level Potential Questionnaires
+                </h2>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  {skipPotentialQueue.map((item) => (
+                    <div
+                      key={item.assessment_id}
+                      className="rounded-2xl bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                    >
+                      <div className="mb-3 flex items-start justify-between gap-4">
+                        <div>
+                          <h3 className="text-lg font-semibold text-[#111827]">
+                            {item.employee_name}
+                          </h3>
+                          <p className="text-sm text-gray-500">
+                            Employee No: {item.employee_number}
+                          </p>
+                        </div>
+
+                        <span className="rounded-full bg-[#FFF1EC] px-3 py-1 text-xs font-medium text-[#F6490D]">
+                          {String(item.status || "").replaceAll("_", " ").toUpperCase()}
+                        </span>
+                      </div>
+
+                      <div className="mb-4 space-y-1 text-sm text-gray-600">
+                        <p>Department: {item.department}</p>
+                        <p>Cycle: {item.cycle}</p>
+                        <p>RM Submitted: {item.rm_submitted ? "Yes" : "No"}</p>
+                        <p>Skip Submitted: {item.skip_submitted ? "Yes" : "No"}</p>
+                      </div>
+
+                      {!item.skip_submitted && item.rm_submitted && (
+                        <button
+                          onClick={() => router.push(`/potential/skip/${item.assessment_id}`)}
+                          className="rounded-xl bg-[#F6490D] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:shadow-md"
+                        >
+                          Fill Potential Questionnaire
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

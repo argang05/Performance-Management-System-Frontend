@@ -1,12 +1,58 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 
 export default function AppHeader() {
-  const { user, logout } = useAuth();
+  const { user, logout, accessToken } = useAuth();
+  const [showAnalyticsLink, setShowAnalyticsLink] = useState(false);
 
   const isAdminScoringUser = String(user?.employee_number || "") === "100607";
+
+  useEffect(() => {
+    async function checkAnalyticsRelease() {
+      try {
+        if (!accessToken) return;
+
+        const statusRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/evaluations/self-review-status/`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+            cache: "no-store",
+          }
+        );
+
+        const statusData = await statusRes.json();
+
+        if (!statusRes.ok || !statusData?.questionnaire_id) {
+          setShowAnalyticsLink(false);
+          return;
+        }
+
+        const releaseRes = await fetch(
+          `/api/scoring/my-analytics/${statusData.questionnaire_id}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+            cache: "no-store",
+          }
+        );
+
+        setShowAnalyticsLink(releaseRes.ok);
+      } catch (error) {
+        console.error("Failed to check analytics release:", error);
+        setShowAnalyticsLink(false);
+      }
+    }
+
+    checkAnalyticsRelease();
+  }, [accessToken]);
 
   return (
     <header className="w-full bg-[#0B0B0B] text-white shadow-md">
@@ -27,6 +73,12 @@ export default function AppHeader() {
           <Link href="/questionnaire" className="transition hover:text-[#F6490D]">
             Questionnaire
           </Link>
+
+          {showAnalyticsLink && (
+            <Link href="/analytics-result" className="transition hover:text-[#F6490D]">
+              Analytics Result
+            </Link>
+          )}
 
           {isAdminScoringUser && (
             <Link href="/admin-scoring" className="transition hover:text-[#F6490D]">
