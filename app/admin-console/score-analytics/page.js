@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import AppHeader from "@/components/layout/AppHeader";
+// import AppHeader from "@/components/layout/AppHeader";
 import { useAuth } from "@/app/context/AuthContext";
 import { toast } from "sonner";
 import NineBoxMatrixCard from "@/components/NineBoxMatrixCard";
@@ -280,7 +280,7 @@ export default function AdminScoringPage() {
   const [appraisalOverridePercent, setAppraisalOverridePercent] = useState("");
   const [appraisalOverrideReason, setAppraisalOverrideReason] = useState("");
   const [overridingAppraisal, setOverridingAppraisal] = useState(false);
-    const [showScoreCard, setShowScoreCard] = useState(false);
+  const [showScoreCard, setShowScoreCard] = useState(false);
   const [showPpiCard, setShowPpiCard] = useState(false);
   const [showPotentialCard, setShowPotentialCard] = useState(false);
   const [showNineBoxCard, setShowNineBoxCard] = useState(false);
@@ -290,6 +290,15 @@ export default function AdminScoringPage() {
   const [updatingAnalyticsRelease, setUpdatingAnalyticsRelease] = useState(false);
 
   const isAdminScoringUser = String(user?.employee_number || "") === "100607";
+
+  async function refreshAll(questionnaireId) {
+    if (!questionnaireId) return;
+  
+    await Promise.allSettled([
+      loadQuestionnaires(),
+      fetchAnalyticsReleaseStatus(questionnaireId),
+    ]);
+  }
 
   async function loadQuestionnaires() {
     try {
@@ -384,7 +393,7 @@ export default function AdminScoringPage() {
       setScoreData(data);
       setOverrideScore(data?.hr_override_score ?? "");
       setOverrideReason(data?.override_reason ?? "");
-      await loadQuestionnaires();
+      await refreshAll(questionnaireId);
     } catch (error) {
       console.error(error);
       toast.error(error.message || "Failed to calculate score.");
@@ -412,6 +421,7 @@ export default function AdminScoringPage() {
 
       toast.success("PPI calculated successfully.");
       await fetchPPIResult(questionnaireId);
+      await refreshAll(questionnaireId);
     } catch (error) {
       console.error(error);
       toast.error(error.message || "Failed to calculate PPI.");
@@ -476,6 +486,9 @@ export default function AdminScoringPage() {
 
       toast.success("Potential score calculated successfully.");
       await fetchPotentialResult(assessmentId);
+      if (selectedQuestionnaire?.questionnaire_id) {
+        await refreshAll(selectedQuestionnaire.questionnaire_id);
+      }
     } catch (error) {
       console.error(error);
       toast.error(error.message || "Failed to calculate potential score.");
@@ -541,6 +554,8 @@ export default function AdminScoringPage() {
 
       toast.success("9-box placement generated successfully.");
       setNineBoxData(data);
+      setShowNineBoxCard(true);
+      await refreshAll(questionnaireId);
     } catch (error) {
       console.error(error);
       toast.error(error.message || "Failed to generate 9-box placement.");
@@ -606,6 +621,8 @@ export default function AdminScoringPage() {
 
       toast.success("Appraisal recommendation generated successfully.");
       setAppraisalData(data);
+      setShowAppraisalCard(true);
+      await refreshAll(questionnaireId);
       setAppraisalOverridePercent(data?.hr_override_percent ?? "");
       setAppraisalOverrideReason(data?.override_reason ?? "");
     } catch (error) {
@@ -689,6 +706,7 @@ export default function AdminScoringPage() {
 
       toast.success("Appraisal override applied successfully.");
       await fetchAppraisalResult(selectedQuestionnaire.questionnaire_id);
+      await refreshAll(selectedQuestionnaire.questionnaire_id);
     } catch (error) {
       console.error(error);
       toast.error(error.message || "Failed to apply appraisal override.");
@@ -732,7 +750,7 @@ export default function AdminScoringPage() {
 
       toast.success("Override applied successfully.");
       await fetchScoreResult(selectedQuestionnaire.questionnaire_id);
-      await loadQuestionnaires();
+      await refreshAll(selectedQuestionnaire.questionnaire_id);
     } catch (error) {
       console.error(error);
       toast.error(error.message || "Failed to apply override.");
@@ -865,29 +883,19 @@ export default function AdminScoringPage() {
 
   if (authLoading || loading) {
     return (
-      <main className="min-h-screen bg-[#F3F4F6]">
-        <AppHeader />
-        <section className="mx-auto max-w-6xl px-6 py-8">
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <p className="text-sm text-gray-600">Loading scoring console...</p>
-          </div>
-        </section>
-      </main>
+      <div className="rounded-[28px] bg-white p-6 shadow-[0_12px_30px_rgba(0,0,0,0.08)]">
+        <p className="text-sm text-gray-600">Loading scoring console...</p>
+      </div>
     );
   }
 
   if (!isAdminScoringUser) {
     return (
-      <main className="min-h-screen bg-[#F3F4F6]">
-        <AppHeader />
-        <section className="mx-auto max-w-6xl px-6 py-8">
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <p className="text-sm text-red-600">
-              You are not authorized to access this page.
-            </p>
-          </div>
-        </section>
-      </main>
+      <div className="rounded-[28px] bg-white p-6 shadow-[0_12px_30px_rgba(0,0,0,0.08)]">
+        <p className="text-sm text-red-600">
+          You are not authorized to access this page.
+        </p>
+      </div>
     );
   }
 
@@ -953,8 +961,6 @@ export default function AdminScoringPage() {
     !fetchingAppraisal;
 
   return (
-    <main className="min-h-screen bg-[#F3F4F6]">
-      <AppHeader />
 
       <section className="mx-auto max-w-6xl space-y-8 px-6 py-8">
         <div className="rounded-[28px] bg-white p-6 shadow-[0_12px_30px_rgba(0,0,0,0.08)]">
@@ -1463,6 +1469,5 @@ export default function AdminScoringPage() {
           </>
         )}
       </section>
-    </main>
   );
 }

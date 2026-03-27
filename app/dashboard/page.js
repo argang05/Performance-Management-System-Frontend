@@ -27,6 +27,7 @@ export default function DashboardPage() {
   const [recommendingPeer, setRecommendingPeer] = useState(false);
   const [confirmPeerOpen, setConfirmPeerOpen] = useState(false);
   const [peerTab, setPeerTab] = useState("pending");
+  const peerCompleted = !!statusData?.peer_completed;
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -212,8 +213,8 @@ export default function DashboardPage() {
 
       setStatusData((prev) => ({
         ...prev,
-        status: "under_peer_review",
         peer_reviewer: selectedPeer.full_name,
+        peer_completed: false,
       }));
 
       setPeerQuery("");
@@ -301,7 +302,7 @@ export default function DashboardPage() {
                 <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                   <div>
                     <h2 className="text-xl font-semibold tracking-tight text-[#111827]">
-                      Review Progress
+                    Your Performance Review Workflow Status
                     </h2>
                     <p className="mt-1 text-sm text-gray-600">
                       Track the progress of your submitted performance questionnaire.
@@ -359,16 +360,16 @@ export default function DashboardPage() {
                   </h3>
 
                   {!hasActualPeerReviewer ? (
-                    <p className="mt-1 text-sm text-gray-600">
-                      Search and select any employee for peer questionnaire review.
-                    </p>
-                  ) : (
-                    <p className="mt-1 text-sm text-gray-600">
-                      {statusData?.status === "under_peer_review"
-                        ? "Awaiting review from peer."
-                        : "Peer review request has been processed."}
-                    </p>
-                  )}
+                      <p className="mt-1 text-sm text-gray-600">
+                        Search and select any employee for peer questionnaire review.
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-sm text-gray-600">
+                        {peerCompleted
+                          ? "Peer review completed."
+                          : "Awaiting peer review completion."}
+                      </p>
+                    )}
 
                   {canRecommendPeer ? (
                     <div className="mt-4 space-y-3">
@@ -429,9 +430,9 @@ export default function DashboardPage() {
                   ) : (
                     <div className="mt-4 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm">
                       {hasActualPeerReviewer
-                        ? statusData?.status === "under_peer_review"
-                          ? "Awaiting Peer Review Completion"
-                          : "Peer review request has been processed."
+                        ? peerCompleted
+                          ? "Peer review completed."
+                          : "Awaiting peer review completion."
                         : "No peer reviewer has been recommended yet."}
                     </div>
                   )}
@@ -442,7 +443,7 @@ export default function DashboardPage() {
             {rmQueue.length > 0 && (
               <div className="mt-10">
                 <h2 className="mb-4 text-xl font-semibold tracking-tight text-[#111827]">
-                  Team Review (Direct Subordinate) Status
+                Direct Reports Performance Review Workflow Status
                 </h2>
 
                 <div className="grid gap-5 md:grid-cols-2">
@@ -557,7 +558,7 @@ export default function DashboardPage() {
             {skipQueue.length > 0 && (
               <div className="mt-10">
                 <h2 className="mb-4 text-xl font-semibold tracking-tight text-[#111827]">
-                  Pending Skip-Level Reviews
+                  Skip-Manager-Level Reviews
                 </h2>
 
                 <div className="grid gap-5 md:grid-cols-2">

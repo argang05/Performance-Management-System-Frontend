@@ -70,9 +70,9 @@ export default function AppHeader() {
             Dashboard
           </Link>
 
-          <Link href="/questionnaire" className="transition hover:text-[#F6490D]">
+          {/* <Link href="/questionnaire" className="transition hover:text-[#F6490D]">
             Questionnaire
-          </Link>
+          </Link> */}
 
           {showAnalyticsLink && (
             <Link href="/analytics-result" className="transition hover:text-[#F6490D]">
@@ -81,8 +81,8 @@ export default function AppHeader() {
           )}
 
           {isAdminScoringUser && (
-            <Link href="/admin-scoring" className="transition hover:text-[#F6490D]">
-              Scoring Console
+            <Link href="/admin-console/dashboard" className="transition hover:text-[#F6490D]">
+              Admin Console
             </Link>
           )}
 

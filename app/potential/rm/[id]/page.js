@@ -206,7 +206,7 @@ export default function RMPotentialPage() {
                     <p className="text-sm font-medium leading-7 text-[#111827]">
                       Q{index + 1}. {q.question_text}
                     </p>
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-gray-500" hidden>
                       Weightage: {q.weightage}
                     </p>
                   </div>

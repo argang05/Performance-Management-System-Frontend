@@ -14,6 +14,8 @@ function getCurrentStep(status) {
       return 1;
     case "under_rm_review":
       return 2;
+    case "under_peer_review":
+      return 2;
     case "rm_reviewed":
       return 3;
     case "under_skip_review":

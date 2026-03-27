@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/AuthContext";
+import { toast } from "sonner";
 
 export default function SkipRMResponsesModal({
   open,
@@ -10,14 +11,18 @@ export default function SkipRMResponsesModal({
 }) {
   const { accessToken } = useAuth();
 
-  const [data, setData] = useState(null);
+  const [data, setData] = useState({
+    responses: [],
+    feedback: "",
+    scope_of_improvement: "",
+  });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (open) {
+    if (open && questionnaireId && accessToken) {
       load();
     }
-  }, [open]);
+  }, [open, questionnaireId, accessToken]);
 
   async function load() {
     try {
@@ -33,9 +38,19 @@ export default function SkipRMResponsesModal({
       );
 
       const json = await res.json();
-      setData(json);
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to load RM responses.");
+      }
+
+      setData({
+        responses: Array.isArray(json?.responses) ? json.responses : [],
+        feedback: json?.feedback || "",
+        scope_of_improvement: json?.scope_of_improvement || "",
+      });
     } catch (error) {
       console.error("Failed to load RM responses:", error);
+      toast.error(error.message || "Failed to load RM responses.");
       setData({
         responses: [],
         feedback: "",
@@ -70,25 +85,36 @@ export default function SkipRMResponsesModal({
         ) : (
           <>
             <div className="space-y-4">
-              {data?.responses?.map((r, i) => (
-                <div
-                  key={i}
-                  className="rounded-2xl border border-gray-200 bg-[#FCFCFD] p-4 shadow-sm"
-                >
-                  <p className="text-sm font-medium text-[#111827]">
-                    {r.question}
-                  </p>
-                  <p className="mt-2 text-sm text-gray-600">
-                    Rating: <span className="font-semibold text-[#111827]">{r.score}</span>
+              {data.responses.length > 0 ? (
+                data.responses.map((r, i) => (
+                  <div
+                    key={i}
+                    className="rounded-2xl border border-gray-200 bg-[#FCFCFD] p-4 shadow-sm"
+                  >
+                    <p className="text-sm font-medium text-[#111827]">
+                      {r.question}
+                    </p>
+                    <p className="mt-2 text-sm text-gray-600">
+                      Rating:{" "}
+                      <span className="font-semibold text-[#111827]">
+                        {r.score}
+                      </span>
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-gray-200 bg-[#FCFCFD] p-4 shadow-sm">
+                  <p className="text-sm text-gray-600">
+                    No RM question-wise scores available.
                   </p>
                 </div>
-              ))}
+              )}
             </div>
 
             <div className="mt-6 rounded-2xl border border-gray-200 bg-[#FCFCFD] p-4 shadow-sm">
               <p className="text-sm font-semibold text-[#111827]">Feedback</p>
               <p className="mt-2 text-sm text-gray-600">
-                {data?.feedback || "No feedback provided."}
+                {data.feedback || "No feedback provided."}
               </p>
             </div>
 
@@ -97,7 +123,7 @@ export default function SkipRMResponsesModal({
                 Scope of Improvement
               </p>
               <p className="mt-2 text-sm text-gray-600">
-                {data?.scope_of_improvement || "No scope of improvement provided."}
+                {data.scope_of_improvement || "No scope of improvement provided."}
               </p>
             </div>
           </>

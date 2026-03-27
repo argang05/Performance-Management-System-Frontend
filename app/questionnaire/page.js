@@ -162,11 +162,57 @@ export default function QuestionnairePage() {
     }
   };
 
+  // const handleSubmit = async () => {
+  //   try {
+  //     setSubmitting(true);
+  //     setError("");
+  //     setSuccess("");
+  
+  //     const unanswered = questions.some((q) => !responses[q.id]);
+  //     if (unanswered) {
+  //       throw new Error("Please answer all questions before final submission.");
+  //     }
+  
+  //     if (!feedback.trim()) {
+  //       throw new Error("Please add feedback before submission.");
+  //     }
+  
+  //     if (!scopeOfImprovement.trim()) {
+  //       throw new Error("Please add scope of improvement before submission.");
+  //     }
+  
+  //     await saveQuestionnaireDraft(accessToken, buildPayload());
+  
+  //     const data = await submitQuestionnaire(accessToken, {
+  //       questionnaire_id: questionnaireId,
+  //     });
+  
+  //     setSuccess(data?.message || "Questionnaire submitted successfully.");
+  //     setIsSubmitted(true);
+  
+  //     toast.success("Questionnaire submitted successfully.");
+  
+  //     setTimeout(() => {
+  //       router.push("/dashboard");
+  //       router.refresh();
+  //     }, 1000);
+  //   } catch (err) {
+  //     setError(err.message || "Failed to submit questionnaire.");
+  //     toast.error(err.message || "Failed to submit questionnaire.");
+  //   } finally {
+  //     setSubmitting(false);
+  //   }
+  // };
+
   const handleSubmit = async () => {
     try {
       setSubmitting(true);
       setError("");
       setSuccess("");
+  
+      if (!questionnaireId) {
+        throw new Error("Questionnaire not found.");
+      }
   
       const unanswered = questions.some((q) => !responses[q.id]);
       if (unanswered) {
@@ -181,21 +227,15 @@ export default function QuestionnairePage() {
         throw new Error("Please add scope of improvement before submission.");
       }
   
-      await saveQuestionnaireDraft(accessToken, buildPayload());
+      const payload = buildPayload();
   
-      const data = await submitQuestionnaire(accessToken, {
-        questionnaire_id: questionnaireId,
-      });
+      const data = await submitQuestionnaire(accessToken, payload);
   
       setSuccess(data?.message || "Questionnaire submitted successfully.");
       setIsSubmitted(true);
   
       toast.success("Questionnaire submitted successfully.");
-  
-      setTimeout(() => {
-        router.push("/dashboard");
-        router.refresh();
-      }, 1000);
+      router.push("/dashboard");
     } catch (err) {
       setError(err.message || "Failed to submit questionnaire.");
       toast.error(err.message || "Failed to submit questionnaire.");
