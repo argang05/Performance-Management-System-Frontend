@@ -288,8 +288,75 @@ export default function AdminScoringPage() {
   const [analyticsReleaseData, setAnalyticsReleaseData] = useState(null);
   const [fetchingAnalyticsRelease, setFetchingAnalyticsRelease] = useState(false);
   const [updatingAnalyticsRelease, setUpdatingAnalyticsRelease] = useState(false);
+  const [questionnaireQuery, setQuestionnaireQuery] = useState("");
+  const [filteredQuestionnaires, setFilteredQuestionnaires] = useState([]);
+  const [showQuestionnaireResults, setShowQuestionnaireResults] = useState(false);
 
   const isAdminScoringUser = String(user?.employee_number || "") === "100607";
+
+  useEffect(() => {
+    const query = questionnaireQuery.trim().toLowerCase();
+  
+    if (!query) {
+      setFilteredQuestionnaires(questionnaires);
+      return;
+    }
+  
+    const filtered = questionnaires.filter((q) => {
+      const employeeName = String(q.employee_name || "").toLowerCase();
+      const employeeNumber = String(q.employee_number || "").toLowerCase();
+      const department = String(q.department || "").toLowerCase();
+      const cycle = String(q.cycle || "").toLowerCase();
+  
+      return (
+        employeeName.includes(query) ||
+        employeeNumber.includes(query) ||
+        department.includes(query) ||
+        cycle.includes(query)
+      );
+    });
+  
+    setFilteredQuestionnaires(filtered);
+  }, [questionnaireQuery, questionnaires]);
+
+  async function handleSelectQuestionnaire(selected) {
+    setSelectedQuestionnaire(selected || null);
+  
+    setQuestionnaireQuery(
+      selected
+        ? `${selected.employee_name} (${selected.employee_number})`
+        : ""
+    );
+  
+    setShowQuestionnaireResults(false);
+  
+    setScoreData(null);
+    setOverrideScore("");
+    setOverrideReason("");
+  
+    setPpiData(null);
+    setPotentialData(null);
+    setNineBoxData(null);
+    setAppraisalData(null);
+  
+    setAppraisalOverridePercent("");
+    setAppraisalOverrideReason("");
+  
+    setShowScoreCard(false);
+    setShowPpiCard(false);
+    setShowPotentialCard(false);
+    setShowNineBoxCard(false);
+    setShowAppraisalCard(false);
+  
+    setAnalyticsReleaseData(null);
+  
+    if (selected?.questionnaire_id) {
+      await Promise.allSettled([
+        fetchAnalyticsReleaseStatus(selected.questionnaire_id),
+        preloadAvailability(selected),
+      ]);
+    }
+  }
 
   async function refreshAll(questionnaireId) {
     if (!questionnaireId) return;
@@ -370,6 +437,20 @@ export default function AdminScoringPage() {
       setFetchingScore(false);
     }
   }
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      const target = event.target;
+      if (!target.closest("[data-questionnaire-search]")) {
+        setShowQuestionnaireResults(false);
+      }
+    }
+  
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
 
   async function calculateScore(questionnaireId) {
@@ -978,51 +1059,73 @@ export default function AdminScoringPage() {
           </h2>
 
           <div className="space-y-4">
-            <select
-              value={selectedQuestionnaire?.questionnaire_id || ""}
-              onChange={async (e) => {
-                const selected = questionnaires.find(
-                  (q) => String(q.questionnaire_id) === String(e.target.value)
-                );
-              
-                setSelectedQuestionnaire(selected || null);
-              
-                setScoreData(null);
-                setOverrideScore("");
-                setOverrideReason("");
-              
-                setPpiData(null);
-                setPotentialData(null);
-                setNineBoxData(null);
-                setAppraisalData(null);
-              
-                setAppraisalOverridePercent("");
-                setAppraisalOverrideReason("");
-              
-                setShowScoreCard(false);
-                setShowPpiCard(false);
-                setShowPotentialCard(false);
-                setShowNineBoxCard(false);
-                setShowAppraisalCard(false);
-              
-                setAnalyticsReleaseData(null);
-              
-                if (selected?.questionnaire_id) {
-                  await Promise.allSettled([
-                    fetchAnalyticsReleaseStatus(selected.questionnaire_id),
-                    preloadAvailability(selected),
-                  ]);
-                }
-              }}
-              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-[#111827] outline-none transition focus:border-[#F6490D]/25 focus:ring-4 focus:ring-[#F6490D]/8"
-            >
-              <option value="">Select questionnaire</option>
-              {questionnaires.map((q) => (
-                <option key={q.questionnaire_id} value={q.questionnaire_id}>
-                  {q.employee_name} ({q.employee_number}) • {q.department || "—"} • {q.cycle || "—"}
-                </option>
-              ))}
-            </select>
+            <div className="relative" data-questionnaire-search>
+              <input
+                type="text"
+                value={questionnaireQuery}
+                onChange={(e) => {
+                  setQuestionnaireQuery(e.target.value);
+                  setShowQuestionnaireResults(true);
+
+                  if (!e.target.value.trim()) {
+                    setSelectedQuestionnaire(null);
+                    setScoreData(null);
+                    setOverrideScore("");
+                    setOverrideReason("");
+                    setPpiData(null);
+                    setPotentialData(null);
+                    setNineBoxData(null);
+                    setAppraisalData(null);
+                    setAppraisalOverridePercent("");
+                    setAppraisalOverrideReason("");
+                    setShowScoreCard(false);
+                    setShowPpiCard(false);
+                    setShowPotentialCard(false);
+                    setShowNineBoxCard(false);
+                    setShowAppraisalCard(false);
+                    setAnalyticsReleaseData(null);
+                  }
+                }}
+                onFocus={() => setShowQuestionnaireResults(true)}
+                placeholder="Search by employee name, employee number, department, or cycle"
+                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-[#111827] outline-none transition focus:border-[#F6490D]/25 focus:ring-4 focus:ring-[#F6490D]/8"
+              />
+
+              {showQuestionnaireResults && (
+                <div className="absolute z-20 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
+                  {filteredQuestionnaires.length > 0 ? (
+                    filteredQuestionnaires.map((q) => (
+                      <button
+                          key={q.questionnaire_id}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleSelectQuestionnaire(q);
+                          }}
+                          className="flex w-full items-start justify-between gap-4 border-b border-gray-100 px-4 py-3 text-left transition hover:bg-gray-50 last:border-b-0"
+                        >
+                        <div>
+                          <p className="text-sm font-medium text-[#111827]">
+                            {q.employee_name} ({q.employee_number})
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {q.department || "—"} • {q.cycle || "—"}
+                          </p>
+                        </div>
+
+                        <span className="mt-0.5 rounded-full bg-[#FFF1EC] px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-[#F6490D]">
+                          {String(q.status || "—").replaceAll("_", " ")}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-4 py-3 text-sm text-gray-500">
+                      No matching questionnaires found.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {selectedQuestionnaire && (
               <div className="rounded-2xl border border-gray-200 bg-[#FCFCFD] p-4">
